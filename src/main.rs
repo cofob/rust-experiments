@@ -32,6 +32,12 @@ fn escape_time<T: PrimInt>(c: Complex<f64>, limit: T) -> Option<T> {
     None
 }
 
+#[test]
+fn test_escape_time() {
+    assert_eq!(escape_time(Complex { re: 1.0, im: 0.0 }, 100), Some(2));
+    assert_eq!(escape_time(Complex { re: 1.0, im: 0.0 }, 1), None);
+}
+
 /// Parse the string `s` as a pair, like `"400x600"` or `"1.0,0.5"`.
 ///
 /// # Examples
