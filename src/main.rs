@@ -1,7 +1,7 @@
 use std::io::Write;
 use std::str::FromStr;
 
-/// Get common divisor of two numbers
+/// Get greatest common divisor of two numbers
 ///
 /// # Examples
 /// Common divisor of 2 and 4 is 2
@@ -70,5 +70,5 @@ fn main() {
     }
 
     // Print result
-    println!("Output: {}", d);
+    println!("The greatest common divisor of {:?} is {}", numbers, d);
 }
