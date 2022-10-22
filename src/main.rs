@@ -1,14 +1,25 @@
 use image::codecs::png::PngEncoder;
 use image::{ColorType, ImageEncoder};
 use num::Complex;
+use num_traits::PrimInt;
 use std::fs::File;
 use std::io::{Error, ErrorKind, Write};
 use std::str::FromStr;
 
 /// Find the escape time for a given point in the complex plane.
-fn escape_time(c: Complex<f64>, limit: u32) -> Option<u32> {
+/// The escape time is the number of iterations it takes for the point to leave the
+/// circle of radius 2 centered at the origin.
+/// If the point does not escape, return `None`.
+///
+/// # Examples
+/// ```
+/// assert_eq!(escape_time(Complex { re: 1.0, im: 0.0 }, 100), Some(0));
+/// assert_eq!(escape_time(Complex { re: 1.0, im: 0.0 }, 1), None);
+/// ```
+fn escape_time<T: PrimInt>(c: Complex<f64>, limit: T) -> Option<T> {
     let mut z = Complex { re: 0.0, im: 0.0 };
-    for i in 0..limit {
+    let mut i = T::zero();
+    while i < limit {
         z = z * z + c;
         // If the absolute value of z is greater than 2, then the point is
         // unbounded and we return the number of iterations it took to get
@@ -16,6 +27,7 @@ fn escape_time(c: Complex<f64>, limit: u32) -> Option<u32> {
         if z.norm_sqr() > 4.0 {
             return Some(i);
         }
+        i = i + T::one();
     }
     None
 }
@@ -116,9 +128,9 @@ fn render(
             // Find the point in the complex plane that corresponds to this pixel in the output image.
             let point = pixel_to_point(bounds, (column, row), upper_left, lower_right);
             // Compute the escape time for that point.
-            pixels[row * bounds.0 + column] = match escape_time(point, 255) {
+            pixels[row * bounds.0 + column] = match escape_time(point, u8::MAX) {
                 None => 16,
-                Some(count) => count as u8,
+                Some(count) => count,
             };
         }
     }

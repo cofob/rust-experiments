@@ -512,6 +512,7 @@ dependencies = [
  "crossbeam",
  "image",
  "num",
+ "num-traits",
  "num_cpus",
 ]
 
