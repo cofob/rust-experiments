@@ -134,10 +134,10 @@ fn test_render() {
         Complex { re: 0.0, im: 0.0 },
     );
     println!("{:?}", pixels);
-    assert_eq!(pixels[0], 0);
-    assert_eq!(pixels[1], 0);
-    assert_eq!(pixels[2], 0);
-    assert_eq!(pixels[3], 0);
+    assert_eq!(pixels[0], 16);
+    assert_eq!(pixels[1], 16);
+    assert_eq!(pixels[2], 16);
+    assert_eq!(pixels[3], 16);
 }
 
 /// Write the buffer `pixels`, whose dimensions are given by `bounds`, to the
