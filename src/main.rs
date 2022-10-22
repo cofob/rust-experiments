@@ -134,7 +134,7 @@ fn render(
             // Find the point in the complex plane that corresponds to this pixel in the output image.
             let point = pixel_to_point(bounds, (column, row), upper_left, lower_right);
             // Compute the escape time for that point.
-            pixels[row * bounds.0 + column] = match escape_time(point, u8::MAX) {
+            pixels[row * bounds.0 + column] = match escape_time(point, 255u8) {
                 None => 16,
                 Some(count) => count,
             };
