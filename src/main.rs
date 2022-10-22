@@ -1,139 +1,200 @@
-#[macro_use]
-extern crate mime;
-
-use iron::prelude::*;
-use iron::status;
-use router::Router;
+use image::codecs::png::PngEncoder;
+use image::{ColorType, ImageEncoder};
+use num::Complex;
+use std::fs::File;
+use std::io::{Error, ErrorKind, Write};
 use std::str::FromStr;
-use urlencoded::UrlEncodedBody;
 
-/// Get greatest common divisor of two numbers
+/// Find the escape time for a given point in the complex plane.
+fn escape_time(c: Complex<f64>, limit: u32) -> Option<u32> {
+    let mut z = Complex { re: 0.0, im: 0.0 };
+    for i in 0..limit {
+        z = z * z + c;
+        // If the absolute value of z is greater than 2, then the point is
+        // unbounded and we return the number of iterations it took to get
+        // there.
+        if z.norm_sqr() > 4.0 {
+            return Some(i);
+        }
+    }
+    None
+}
+
+/// Parse the string `s` as a pair, like `"400x600"` or `"1.0,0.5"`.
 ///
 /// # Examples
-/// Common divisor of 2 and 4 is 2
 /// ```
-/// assert_eq!(gcd(2, 4), 2);
+/// assert_eq!(parse_pair("400x600", 'x'), Ok((400, 600)));
+/// assert_eq!(parse_pair("1.0,0.5", ','), Ok((1.0, 0.5)));
 /// ```
-///
-/// # Panics
-/// Panics if any of the arguments is zero
-/// ```
-/// gcd(0, 1);
-/// ```
-fn gcd(mut n: u64, mut m: u64) -> u64 {
-    assert!(n != 0 && m != 0);
-    while m != 0 {
-        if m < n {
-            let t = m;
-            m = n;
-            n = t;
-        }
-        m = m % n;
+fn parse_pair<T: FromStr>(s: &str, separator: char) -> Option<(T, T)> {
+    // Find position of separator
+    match s.find(separator) {
+        None => None,
+        Some(index) => match (T::from_str(&s[..index]), T::from_str(&s[index + 1..])) {
+            (Ok(l), Ok(r)) => Some((l, r)),
+            _ => None,
+        },
     }
-    n
 }
 
 #[test]
-fn test_gcd() {
-    assert_eq!(gcd(14, 15), 1);
-
-    assert_eq!(gcd(2 * 3 * 5 * 11 * 17, 3 * 7 * 11 * 13 * 19), 3 * 11);
+fn test_parse_pair() {
+    assert_eq!(parse_pair::<i32>("", ','), None);
+    assert_eq!(parse_pair::<i32>("10,", ','), None);
+    assert_eq!(parse_pair::<i32>(",10", ','), None);
+    assert_eq!(parse_pair::<i32>("10,20", ','), Some((10, 20)));
+    assert_eq!(parse_pair::<i32>("10,20xy", ','), None);
+    assert_eq!(parse_pair::<f64>("0.5x", 'x'), None);
+    assert_eq!(parse_pair::<f64>("0.5x1.5", 'x'), Some((0.5, 1.5)));
 }
 
-/// Main function
-fn main() {
-    let mut router = Router::new();
-
-    router.get("/", get_form, "index");
-    router.post("/gcd", post_gcd, "post_gcd");
-
-    println!("Server running on port 3000: http://localhost:3000/");
-    Iron::new(router).http("localhost:3000").unwrap();
+/// Parse a pair of floating-point numbers separated by a comma as a complex number.
+fn parse_complex(s: &str) -> Option<Complex<f64>> {
+    match parse_pair(s, ',') {
+        Some((re, im)) => Some(Complex { re, im }),
+        None => None,
+    }
 }
 
-fn get_form(_request: &mut Request) -> IronResult<Response> {
-    let mut response = Response::new();
-    response.set_mut(status::Ok);
-    response.set_mut(mime!(Text/Html; Charset=Utf8));
-    response.set_mut(
-        r#"
-        <title>GCD Calculator</title>
-        <form action="/gcd" method="post">
-            <input type="text" name="n"/>
-            <input type="text" name="m"/>
-            <button type="submit">Compute GCD</button>
-        </form>
-    "#,
+#[test]
+fn test_parse_complex() {
+    assert_eq!(
+        parse_complex("1.25,-0.0625"),
+        Some(Complex {
+            re: 1.25,
+            im: -0.0625
+        })
     );
-    Ok(response)
+    assert_eq!(parse_complex(",-0.0625"), None);
 }
 
-fn post_gcd(request: &mut Request) -> IronResult<Response> {
-    let mut response = Response::new();
+/// Given the row and column of a pixel in the output image, return the corresponding point on the
+/// complex plane.
+fn pixel_to_point(
+    bounds: (usize, usize),
+    pixel: (usize, usize),
+    upper_left: Complex<f64>,
+    lower_right: Complex<f64>,
+) -> Complex<f64> {
+    let (width, height) = (
+        lower_right.re - upper_left.re,
+        upper_left.im - lower_right.im,
+    );
+    Complex {
+        re: upper_left.re + pixel.0 as f64 * width / bounds.0 as f64,
+        im: upper_left.im - pixel.1 as f64 * height / bounds.1 as f64,
+    }
+}
 
-    let form_data = match request.get_ref::<UrlEncodedBody>() {
-        Ok(map) => map,
+#[test]
+fn test_pixel_to_point() {
+    assert_eq!(
+        pixel_to_point(
+            (100, 100),
+            (25, 75),
+            Complex { re: -1.0, im: 1.0 },
+            Complex { re: 1.0, im: -1.0 }
+        ),
+        Complex { re: -0.5, im: -0.5 }
+    );
+}
+
+/// Render a rectangle of the Mandelbrot set into a buffer of pixels.
+fn render(
+    pixels: &mut [u8],
+    bounds: (usize, usize),
+    upper_left: Complex<f64>,
+    lower_right: Complex<f64>,
+) {
+    assert!(pixels.len() == bounds.0 * bounds.1);
+
+    // Iterate over the rows of the image.
+    for row in 0..bounds.1 {
+        // Iterate over the columns of the image.
+        for column in 0..bounds.0 {
+            // Find the point in the complex plane that corresponds to this pixel in the output image.
+            let point = pixel_to_point(bounds, (column, row), upper_left, lower_right);
+            // Compute the escape time for that point.
+            pixels[row * bounds.0 + column] = match escape_time(point, 255) {
+                None => 0,
+                Some(count) => 255 - count as u8,
+            };
+        }
+    }
+}
+
+#[test]
+fn test_render() {
+    let mut pixels = [0; 10 * 10];
+    render(
+        &mut pixels,
+        (10, 10),
+        Complex { re: 0.0, im: 0.0 },
+        Complex { re: 0.0, im: 0.0 },
+    );
+    println!("{:?}", pixels);
+    assert_eq!(pixels[0], 0);
+    assert_eq!(pixels[1], 0);
+    assert_eq!(pixels[2], 0);
+    assert_eq!(pixels[3], 0);
+}
+
+/// Write the buffer `pixels`, whose dimensions are given by `bounds`, to the
+/// file named `filename`.
+fn write_image(
+    filename: &str,
+    pixels: &[u8],
+    bounds: (usize, usize),
+) -> Result<(), std::io::Error> {
+    // Create a new file.
+    let output = File::create(filename)?;
+
+    // Create a new encoder that writes to the file we just created.
+    let encoder = PngEncoder::new(output);
+    match encoder.write_image(pixels, bounds.0 as u32, bounds.1 as u32, ColorType::L8) {
+        Ok(_) => (),
         Err(e) => {
-            response.set_mut(status::BadRequest);
-            response.set_mut(format!("Error parsing form data: {:?}\n", e));
-            return Ok(response);
+            return Err(Error::new(
+                ErrorKind::Other,
+                format!("Failed to write image: {:?}", e),
+            ));
         }
     };
-    let n = match form_data.get("n") {
-        Some(nums) => nums,
-        None => {
-            response.set_mut(status::BadRequest);
-            response.set_mut(format!("form data has no 'n' parameter\n"));
-            return Ok(response);
-        }
-    };
-    let m = match form_data.get("m") {
-        Some(nums) => nums,
-        None => {
-            response.set_mut(status::BadRequest);
-            response.set_mut(format!("form data has no 'm' parameter\n"));
-            return Ok(response);
-        }
-    };
-    let mut numbers = Vec::new();
-    for unparsed in n {
-        match u64::from_str(unparsed) {
-            Ok(n) => numbers.push(n),
-            Err(_) => {
-                response.set_mut(status::BadRequest);
-                response.set_mut(format!(
-                    "Value for 'n' parameter not a number: {:?}\n",
-                    unparsed
-                ));
-                return Ok(response);
-            }
-        }
-    }
-    for unparsed in m {
-        match u64::from_str(unparsed) {
-            Ok(m) => numbers.push(m),
-            Err(_) => {
-                response.set_mut(status::BadRequest);
-                response.set_mut(format!(
-                    "Value for 'n' parameter not a number: {:?}\n",
-                    unparsed
-                ));
-                return Ok(response);
-            }
-        }
+
+    Ok(())
+}
+
+fn main() {
+    let args: Vec<String> = std::env::args().collect();
+
+    // Check that we have the right number of arguments.
+    if args.len() != 5 {
+        writeln!(
+            std::io::stderr(),
+            "Usage: mandelbrot FILE PIXELS UPPERLEFT LOWERRIGHT"
+        )
+        .unwrap();
+        writeln!(
+            std::io::stderr(),
+            "Example: {} mandel.png 1000x750 -1.20,0.35 -1,0.20",
+            args[0]
+        )
+        .unwrap();
+        std::process::exit(1);
     }
 
-    let mut d = numbers[0];
-    for m in &numbers[1..] {
-        d = gcd(d, *m);
-    }
+    // Parse the arguments.
+    let bounds = parse_pair(&args[2], 'x').expect("error parsing image dimensions");
+    let upper_left = parse_complex(&args[3]).expect("error parsing upper left corner point");
+    let lower_right = parse_complex(&args[4]).expect("error parsing lower right corner point");
 
-    response.set_mut(status::Ok);
-    response.set_mut(mime!(Text/Html; Charset=Utf8));
-    response.set_mut(format!(
-        "The greatest common divisor of the numbers {:?} is <b>{}</b>\n",
-        numbers, d
-    ));
+    // Create a buffer of pixels.
+    let mut pixels = vec![0; bounds.0 * bounds.1];
 
-    Ok(response)
+    // Render the Mandelbrot set into the buffer.
+    render(&mut pixels, bounds, upper_left, lower_right);
+
+    // Write the buffer as a PNG image.
+    write_image(&args[1], &pixels, bounds).expect("error writing PNG file");
 }
