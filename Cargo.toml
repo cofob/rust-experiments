@@ -1,0 +1,24 @@
+[package]
+name = "rust-experiments"
+version = "0.1.0"
+edition = "2021"
+authors = ["Egor Ternovoy <cofob@riseup.net>"]
+
+[dependencies]
+
+
+[profile.dev]
+codegen-units = 256
+incremental = true
+opt-level = 0
+debug = true
+
+[profile.release]
+debug-assertions = false
+overflow-checks = false
+incremental = false
+opt-level = 3
+panic = 'unwind'
+debug = false
+strip = true
+lto = true
