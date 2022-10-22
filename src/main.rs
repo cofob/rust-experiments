@@ -40,16 +40,20 @@ fn main() {
     if std::env::args().len() == 1 {
         writeln!(
             std::io::stderr(),
-            "Usage: {} [NUMBER1] [NUMBER2]",
+            "Usage: {} NUMBERS...",
             std::env::args().nth(0).unwrap()
         )
         .unwrap();
         std::process::exit(1);
     }
 
-    // Check if all required arguments are given
-    if std::env::args().len() != 3 {
-        writeln!(std::io::stderr(), "Error: You must specify two numbers.").unwrap();
+    // Check if minimum two arguments are given
+    if std::env::args().len() < 3 {
+        writeln!(
+            std::io::stderr(),
+            "Error: You must specify at least 2 numbers."
+        )
+        .unwrap();
         std::process::exit(1);
     }
 
@@ -59,6 +63,12 @@ fn main() {
         .map(|arg| u64::from_str(&arg).expect("error parsing argument"))
         .collect();
 
-    // Calculate gcd of two numbers and print it
-    println!("Output: {}", gcd(numbers[0], numbers[1]));
+    // Calculate gcd
+    let mut d = numbers[0];
+    for m in &numbers[1..] {
+        d = gcd(d, *m);
+    }
+
+    // Print result
+    println!("Output: {}", d);
 }
