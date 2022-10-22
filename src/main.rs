@@ -117,8 +117,8 @@ fn render(
             let point = pixel_to_point(bounds, (column, row), upper_left, lower_right);
             // Compute the escape time for that point.
             pixels[row * bounds.0 + column] = match escape_time(point, 255) {
-                None => 0,
-                Some(count) => 255 - count as u8,
+                None => 16,
+                Some(count) => count as u8,
             };
         }
     }
