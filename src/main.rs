@@ -47,16 +47,6 @@ fn main() {
         std::process::exit(1);
     }
 
-    // Check if minimum two arguments are given
-    if std::env::args().len() < 3 {
-        writeln!(
-            std::io::stderr(),
-            "Error: You must specify at least 2 numbers."
-        )
-        .unwrap();
-        std::process::exit(1);
-    }
-
     // Convert arguments to numbers
     let numbers: Vec<u64> = std::env::args()
         .skip(1)
